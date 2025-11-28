@@ -92,3 +92,4 @@ visions
 wcwidth
 wordcloud
 ydata-profiling
+pyarrow
