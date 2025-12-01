@@ -164,7 +164,7 @@ Perform the data cleaning:
 - **Define Churn**: Create a binary target variable `churn` (1 if user visited `Cancellation Confirmation` in the next 10 days).
 - **EDA**:
   - Plot distribution of Churn (Check for **Class Imbalance**).
-  - Compare behavior: "Average songs played per session for Churners vs. Non-Churners".
+  - Compare behavior: "Average songs played per session for Churners vs. Non-Churners". Frequencies of errors before churning.
   - Visualization of standard users journey to `churn`.
 
 ### Feature Engineering
