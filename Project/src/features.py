@@ -58,6 +58,11 @@ def extract_user_attributes(df):
     - state (from location)
     """
     df = df.copy()
+
+    # Ensure datetime types
+    df["ts"] = pd.to_datetime(df["ts"])
+    df["registration"] = pd.to_datetime(df["registration"])
+
     # Account Age
     df["account_age_days"] = (df["ts"] - df["registration"]).dt.total_seconds() / (
         24 * 3600

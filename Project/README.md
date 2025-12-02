@@ -11,6 +11,8 @@ Names:
 
 Churns $\Leftrightarrow$ X visits `Cancellation Confirmation` page.
 
+**Submit Command Line**: `kaggle competitions submit -c churn-prediction-25-26 -f Project/data/submission.csv -m "Raynor X Attempt"`
+
 ## Steps
 
 ### Dataset Samples
