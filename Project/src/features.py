@@ -60,7 +60,8 @@ def extract_user_attributes(df):
     df = df.copy()
 
     # Ensure datetime types
-    df["ts"] = pd.to_datetime(df["ts"])
+    # 'ts' is in milliseconds (int64) in the raw parquet files
+    df["ts"] = pd.to_datetime(df["ts"], unit="ms")
     df["registration"] = pd.to_datetime(df["registration"])
 
     # Account Age
