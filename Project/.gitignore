@@ -4,3 +4,6 @@
 # Ignore cached files
 __pycache__/
 *.pyc
+
+# Catboost
+catboost_info/

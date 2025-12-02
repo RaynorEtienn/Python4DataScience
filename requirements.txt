@@ -3,6 +3,7 @@ annotated-types
 asttokens
 attrs
 bleach
+catboost
 certifi
 charset-normalizer
 colorlog
@@ -17,6 +18,7 @@ executing
 fastjsonschema
 filetype
 fonttools
+graphviz
 greenlet
 idna
 ImageHash
@@ -34,6 +36,7 @@ jupyter_client
 jupyter_core
 kaggle
 kiwisolver
+lightgbm
 llvmlite
 Mako
 MarkupSafe
@@ -47,6 +50,7 @@ nest-asyncio
 networkx
 numba
 numpy
+nvidia-nccl-cu12
 optuna
 packaging
 pandas
@@ -103,5 +107,6 @@ visions
 wcwidth
 webencodings
 wordcloud
+xgboost
 ydata-profiling
 zipp
