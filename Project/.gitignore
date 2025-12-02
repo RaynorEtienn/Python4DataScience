@@ -1,2 +1,7 @@
+# Ignore data files
 data/test.parquet
 data/train.parquet
+
+# Ignore cached files
+__pycache__/
+*.pyc
