@@ -233,9 +233,10 @@ def aggregate_user_features(df):
     user_features["thumbs_ratio"] = user_features["is_thumbs_up"] / (
         user_features["is_thumbs_up"] + user_features["is_thumbs_down"] + 1
     )
-    user_features["errors_per_song"] = user_features["is_error"] / (
-        user_features["is_song"] + 1
-    )
+    # Clip errors_per_song to handle extreme outliers (e.g. users with 0 songs and many errors)
+    user_features["errors_per_song"] = (
+        user_features["is_error"] / (user_features["is_song"] + 1)
+    ).clip(upper=5.0)
 
     # --- Advanced Features (Trends, Gaps, Session Quality) ---
 
