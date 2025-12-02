@@ -132,25 +132,39 @@ def aggregate_session_metrics(df):
     return df
 
 
-def aggregate_user_features(df):
+def aggregate_user_features(df, snapshot_df=None):
     """
     Aggregates event-level data into a single row per user.
     Includes rolling window features (last 1, 3, 7 days).
+
+    Args:
+        df: Event log dataframe.
+        snapshot_df: Optional dataframe with ['userId', 'cutoff_ts'].
+                     If provided, features are calculated relative to 'cutoff_ts'.
+                     If None, features are calculated relative to the user's last event.
     """
     df = df.copy()
 
-    # 1. Identify Churn Target
+    # 1. Identify Churn Target (Global - for reference, but target generation should be external for snapshots)
     churn_users = df[df["page"] == "Cancellation Confirmation"]["userId"].unique()
 
-    # 2. Calculate Reference Time (Last active time per user)
-    # For churners, this is the churn time. For others, it's the end of their history.
-    user_max_ts = (
-        df.groupby("userId")["ts"]
-        .max()
-        .reset_index()
-        .rename(columns={"ts": "last_active"})
-    )
-    df = df.merge(user_max_ts, on="userId")
+    # 2. Determine Cutoff Time
+    if snapshot_df is not None:
+        # Merge cutoff times
+        df = df.merge(snapshot_df[["userId", "cutoff_ts"]], on="userId", how="inner")
+        # Filter events AFTER the cutoff
+        df = df[df["ts"] <= df["cutoff_ts"]]
+        # Set reference time
+        df["last_active"] = df["cutoff_ts"]
+    else:
+        # Default behavior: Use max timestamp per user
+        user_max_ts = (
+            df.groupby("userId")["ts"]
+            .max()
+            .reset_index()
+            .rename(columns={"ts": "last_active"})
+        )
+        df = df.merge(user_max_ts, on="userId")
 
     # 3. Calculate Time Delta for Rolling Windows
     df["days_from_end"] = (df["last_active"] - df["ts"]).dt.total_seconds() / (
@@ -172,7 +186,12 @@ def aggregate_user_features(df):
     if "downgrade" not in df.columns:
         df["downgrade"] = (df["page"] == "Submit Downgrade").astype(int)
 
-    g = df.groupby("userId")
+    # Determine GroupBy Keys
+    group_keys = ["userId"]
+    if snapshot_df is not None:
+        group_keys = ["userId", "cutoff_ts"]
+
+    g = df.groupby(group_keys)
     user_features = g.agg(
         {
             "gender": "first",
@@ -180,7 +199,7 @@ def aggregate_user_features(df):
             "registration": "first",
             "platform": "first",
             "state": "first",  # Kept for Frequency Encoding
-            "last_active": "max",
+            "last_active": "max",  # This will be the cutoff_ts if provided
             "is_thumbs_up": "sum",
             "is_thumbs_down": "sum",
             "is_ad": "sum",
@@ -199,7 +218,7 @@ def aggregate_user_features(df):
 
         # Group and aggregate
         window_agg = (
-            window_df.groupby("userId")
+            window_df.groupby(group_keys)
             .agg(
                 {
                     "is_song": "sum",
@@ -254,19 +273,28 @@ def aggregate_user_features(df):
     # We need to go back to event level for this, or approximate.
     # Approximation: Account Lifetime / Total Sessions (sessionId count)
     # Let's get total sessions first
-    total_sessions = df.groupby("userId")["sessionId"].nunique()
+    total_sessions = df.groupby(group_keys)["sessionId"].nunique()
     user_features = user_features.join(total_sessions.rename("total_sessions"))
 
     user_features["avg_days_between_sessions"] = (
         user_features["account_lifetime"] / user_features["total_sessions"]
     )
-    # Recency is implicitly captured by 'days_from_end' logic if we had a global reference,
-    # but here 'last_active' is per user.
-    # However, we can calculate 'days_since_last_session' relative to the dataset end if needed,
-    # but for churn prediction, the 'last_active' IS the churn point or max date.
-    # A better metric might be: Did they have a long gap BEFORE their last session?
-    # That's hard to get from just aggregations.
-    # Let's stick to avg_days_between_sessions.
+
+    # Recency: Days since last session (relative to cutoff)
+    # Since we filtered df to <= cutoff, the max(ts) IS the last session time.
+    # And last_active IS the cutoff.
+    # So days_since_last_session = (cutoff - max(ts)).
+    # Wait, in step 2, we set last_active = cutoff_ts.
+    # But we need the ACTUAL last event time to calculate recency.
+    # Let's recalculate actual last event time.
+    actual_last_event = df.groupby(group_keys)["ts"].max()
+    user_features["days_since_last_session"] = (
+        user_features["last_active"] - actual_last_event
+    ).dt.total_seconds() / (24 * 3600)
+    # Fill NaNs (if any) with 0 or lifetime? If they have events, it shouldn't be NaN.
+    user_features["days_since_last_session"] = user_features[
+        "days_since_last_session"
+    ].fillna(0)
 
     # C. Session Quality
     user_features["avg_songs_per_session"] = (
@@ -276,9 +304,12 @@ def aggregate_user_features(df):
         user_features["length"] / user_features["total_sessions"]
     )
 
-    # 7. Set Target
-    user_features["target"] = 0
-    user_features.loc[user_features.index.isin(churn_users), "target"] = 1
+    # 7. Set Target (Legacy / Default Behavior)
+    # If snapshot_df is provided, the target should be in it, or calculated externally.
+    # If not provided, we assume standard "Ever Churned" logic for backward compatibility.
+    if snapshot_df is None:
+        user_features["target"] = 0
+        user_features.loc[user_features.index.isin(churn_users), "target"] = 1
 
     # 8. Frequency Encoding for State
     # Calculate frequency of each state
@@ -294,3 +325,115 @@ def aggregate_user_features(df):
     )
 
     return user_features
+
+
+def generate_training_data(df, train_end_date=None):
+    """
+    Generates training data using the Snapshot approach with Random Sampling.
+    Creates multiple training examples per user at different points in time.
+
+    Strategy:
+    - Churners:
+        - Target 1: 1, 3, 7 days before churn.
+        - Target 0: 30, 60 days before churn.
+    - Non-Churners:
+        - Target 0: Random points during active history.
+        - Target 0: Random points AFTER last event (simulating dormancy/gaps).
+
+    Args:
+        df: Raw event log dataframe.
+        train_end_date: Optional date to split train/validation.
+    """
+    df = df.copy()
+    np.random.seed(42)  # For reproducibility
+
+    # 1. Identify Churners and Churn Dates
+    churn_data = df[df["page"] == "Cancellation Confirmation"][
+        ["userId", "ts"]
+    ].drop_duplicates()
+    churn_data.columns = ["userId", "churn_ts"]
+    churn_map = churn_data.set_index("userId")["churn_ts"]
+
+    # 2. Define Snapshots
+    snapshots = []
+
+    # Get all users and their min/max timestamps
+    user_stats = df.groupby("userId")["ts"].agg(["min", "max"])
+
+    for userId, stats in user_stats.iterrows():
+        min_ts = stats["min"]
+        max_ts = stats["max"]
+        is_churner = userId in churn_map.index
+        churn_ts = churn_map.get(userId)
+
+        if is_churner:
+            # A. Positive Samples (Approaching Churn)
+            # Take snapshots 1, 3, 7 days before churn
+            for days_before in [1, 3, 7]:
+                cutoff = churn_ts - pd.Timedelta(days=days_before)
+                if cutoff > min_ts:
+                    snapshots.append(
+                        {"userId": userId, "cutoff_ts": cutoff, "target": 1}
+                    )
+
+            # B. Negative Samples (Long before churn)
+            # Take snapshots 30, 60 days before churn (if account is old enough)
+            for days_before in [30, 60]:
+                cutoff = churn_ts - pd.Timedelta(days=days_before)
+                if cutoff > min_ts:
+                    snapshots.append(
+                        {"userId": userId, "cutoff_ts": cutoff, "target": 0}
+                    )
+        else:
+            # C. Non-Churners (Negative Samples)
+
+            # 1. Random Historical Snapshots (Active periods)
+            # Pick 2 random points between min_ts and max_ts
+            # This teaches the model what "normal activity" looks like
+            if (max_ts - min_ts).total_seconds() > 3600:  # At least 1 hour history
+                random_seconds = np.random.randint(
+                    0, int((max_ts - min_ts).total_seconds()), 2
+                )
+                for sec in random_seconds:
+                    cutoff = min_ts + pd.Timedelta(seconds=sec)
+                    snapshots.append(
+                        {"userId": userId, "cutoff_ts": cutoff, "target": 0}
+                    )
+            else:
+                # Fallback for very short history
+                snapshots.append({"userId": userId, "cutoff_ts": max_ts, "target": 0})
+
+            # 2. "Dormancy" Snapshots (The Fix for Test Set Distribution)
+            # Add snapshots AFTER the last event to simulate inactivity gaps.
+            # The Test Set has gaps up to ~50 days. We sample from 1 to 45 days.
+            # We add 3 such snapshots per user to heavily weight this "safe gap" concept.
+            random_gaps = np.random.randint(1, 45, 3)
+            for gap in random_gaps:
+                cutoff = max_ts + pd.Timedelta(days=gap)
+                snapshots.append({"userId": userId, "cutoff_ts": cutoff, "target": 0})
+
+    snapshot_df = pd.DataFrame(snapshots)
+
+    # Filter by train_end_date if provided (for time-based validation)
+    if train_end_date:
+        snapshot_df = snapshot_df[
+            snapshot_df["cutoff_ts"] < pd.to_datetime(train_end_date)
+        ]
+
+    print(f"Generated {len(snapshot_df)} snapshots.")
+    print(f"Class Balance: {snapshot_df['target'].mean():.2%}")
+
+    # 3. Compute Features
+    # This calls the updated aggregate_user_features
+    features_df = aggregate_user_features(df, snapshot_df)
+
+    # 4. Add Target
+    # Join the target from snapshot_df
+    # features_df index is MultiIndex (userId, cutoff_ts)
+    snapshot_df_indexed = snapshot_df.set_index(["userId", "cutoff_ts"])
+    features_df = features_df.join(snapshot_df_indexed[["target"]])
+
+    # Reset index to make it easier to work with (optional, but usually preferred)
+    features_df = features_df.reset_index()
+
+    return features_df
