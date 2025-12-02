@@ -6,6 +6,7 @@ from .features import (
     extract_user_attributes,
     extract_behavioral_flags,
     aggregate_session_metrics,
+    aggregate_user_features,
 )
 from .visualization import (
     plot_churn_distribution,
