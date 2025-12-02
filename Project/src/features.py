@@ -231,10 +231,10 @@ def aggregate_user_features(df):
         user_features["account_lifetime"] + 1
     )
     user_features["thumbs_ratio"] = user_features["is_thumbs_up"] / (
-        user_features["is_thumbs_up"] + user_features["is_thumbs_down"] + 1e-9
+        user_features["is_thumbs_up"] + user_features["is_thumbs_down"] + 1
     )
     user_features["errors_per_song"] = user_features["is_error"] / (
-        user_features["is_song"] + 1e-9
+        user_features["is_song"] + 1
     )
 
     # --- Advanced Features (Trends, Gaps, Session Quality) ---
