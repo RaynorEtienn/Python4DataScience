@@ -369,6 +369,35 @@ def aggregate_user_features(df, snapshot_df=None):
         user_features["songs_last_7d"] + 1
     )
 
+    # --- FEATURE ENGINEERING BOOST (Moved from Notebook) ---
+    # Add ratio features to capture trends (Velocity)
+    if (
+        "songs_last_7d" in user_features.columns
+        and "songs_last_28d" in user_features.columns
+    ):  # Note: songs_last_28d might not exist, check window aggregations
+        # Based on existing code, we have 30d, not 28d. Adjusting to 30d for consistency or adding 28d if needed.
+        # The notebook used 'sessions_last_28d' which likely didn't exist in features.py output unless added.
+        # Let's stick to what we have: 7d vs 30d is already in 'trend_songs_7d_vs_30d'
+        pass
+
+    # Interaction: Recency vs Frequency
+    if (
+        "days_since_last_session" in user_features.columns
+        and "total_sessions" in user_features.columns
+    ):
+        user_features["recency_frequency_ratio"] = user_features[
+            "days_since_last_session"
+        ] / (user_features["total_sessions"] + 1)
+
+    # Session Velocity (using 7d vs 30d as proxy for 28d)
+    if (
+        "songs_last_7d" in user_features.columns
+        and "songs_last_30d" in user_features.columns
+    ):
+        user_features["session_velocity"] = user_features["songs_last_7d"] / (
+            user_features["songs_last_30d"] / 4 + 0.01
+        )
+
     # 7. Set Target (Legacy / Default Behavior)
     # If snapshot_df is provided, the target should be in it, or calculated externally.
     # If not provided, we assume standard "Ever Churned" logic for backward compatibility.
