@@ -11,11 +11,11 @@ Names:
 
 Churns $\Leftrightarrow$ X visits `Cancellation Confirmation` page.
 
-**Submit Command Line**: `kaggle competitions submit -c churn-prediction-25-26 -f Project/data/submission.csv -m "Raynor X Attempt"`
+## Installation
 
-## Steps
+**Run**: `pip install -r requirements.txt`
 
-### Dataset Samples
+## Dataset Samples
 
 <table>
   <thead>
@@ -156,53 +156,3 @@ Churns $\Leftrightarrow$ X visits `Cancellation Confirmation` page.
   </tbody>
 </table>
 </div>
-
-### Cleaning & Analysis
-
-Perform the data cleaning:
-
-- **Type Casting**: Ensure `userId` is a string and `ts`/`registration` are datetime objects.
-- **Missing Values**: Analyze and handle `NaN` values (especially in `userId`).
-- **Define Churn**: Create a binary target variable `churn` (1 if user visited `Cancellation Confirmation` in the next 10 days).
-- **EDA**:
-  - Plot distribution of Churn (Check for **Class Imbalance**).
-  - Compare behavior: "Average songs played per session for Churners vs. Non-Churners". Frequencies of errors before churning.
-  - Visualization of standard users journey to `churn`.
-
-### Feature Engineering
-
-**Crucial Step**: Transform "Event-Level Data" (logs) into "User-Level Data" (one row per user).
-
-- **User-Level Aggregations**:
-  - _Activity_: Total songs, thumbs up/down, errors.
-  - _Engagement_: Avg session duration, avg songs per session.
-  - _Temporal_: Days since registration, time since last active session.
-- **Encoding**: Gender, Level, Location.
-
-### Preprocessing Pipeline
-
-Use pipelines to:
-
-- **Train/Test Split**: Use Stratified Split to maintain churn rate.
-- **Handle Imbalance**: Use `SMOTE` or `class_weight='balanced'`.
-- **Scale**: Apply `StandardScaler` or `MinMaxScaler` for numerical features.
-
-### Modeling & Evaluation
-
-- **Model Selection**:
-  - Baseline (Dummy Classifier).
-  - Logistic Regression, Random Forest.
-  - **Gradient Boosting**: XGBoost, LightGBM, or CatBoost.
-- **Hyperparameter Tuning**: GridSearch or RandomSearch.
-- **Metrics**:
-  - **F1-Score** & **Recall** (Priority over accuracy).
-  - **ROC-AUC**.
-
-### Interpretation & Explainability
-
-- **Feature Importance**: Identify top drivers of churn.
-- **SHAP Values**: Explain individual predictions (why did _this_ specific user churn?).
-
-### Final evaluations and submissions
-
-Generate predictions on the test set and submit.
