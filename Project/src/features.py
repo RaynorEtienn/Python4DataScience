@@ -223,6 +223,7 @@ def aggregate_user_features(df, snapshot_df=None):
                 {
                     "is_song": "sum",
                     "is_error": "sum",
+                    "is_thumbs_down": "sum",
                     "length": "sum",
                     "artist": "nunique",  # Diversity
                     "song": "nunique",  # Diversity
@@ -232,6 +233,7 @@ def aggregate_user_features(df, snapshot_df=None):
                 columns={
                     "is_song": f"songs_last_{days}d",
                     "is_error": f"errors_last_{days}d",
+                    "is_thumbs_down": f"thumbs_down_last_{days}d",
                     "length": f"listen_time_last_{days}d",
                     "artist": f"unique_artists_last_{days}d",
                     "song": f"unique_songs_last_{days}d",
@@ -302,6 +304,69 @@ def aggregate_user_features(df, snapshot_df=None):
     )
     user_features["avg_session_duration"] = (
         user_features["length"] / user_features["total_sessions"]
+    )
+
+    # --- Phase 1: Advanced Features (Last Session & Trends) ---
+
+    # D. Last Session Metrics
+    # We need to isolate the last session for each user (relative to cutoff)
+    # 1. Find the sessionId of the last event
+    last_session_map = df.sort_values("ts").groupby(group_keys)["sessionId"].last()
+
+    # 2. Filter original df to get only events from these sessions
+    # This is a bit tricky with GroupBy. Let's use a merge.
+    last_session_df = df.merge(
+        last_session_map.rename("last_sessionId"),
+        left_on=group_keys + ["sessionId"],
+        right_on=group_keys + ["last_sessionId"],
+    )
+
+    # 3. Aggregate metrics for this last session
+    last_session_agg = (
+        last_session_df.groupby(group_keys)
+        .agg({"is_error": "sum", "is_song": "sum", "length": "sum", "downgrade": "max"})
+        .rename(
+            columns={
+                "is_error": "last_session_errors",
+                "is_song": "last_session_songs",
+                "length": "last_session_length",
+                "downgrade": "last_session_downgrade",
+            }
+        )
+    )
+
+    user_features = user_features.join(last_session_agg).fillna(0)
+
+    # E. Activity Slope (Trend)
+    # Simple linear approximation: (Avg Daily Songs Last 7d) - (Avg Daily Songs Last 30d)
+    # If positive, activity is increasing. If negative, fading out.
+    user_features["daily_songs_7d"] = user_features["songs_last_7d"] / 7.0
+    user_features["daily_songs_30d"] = user_features["songs_last_30d"] / 30.0
+    user_features["activity_trend"] = (
+        user_features["daily_songs_7d"] - user_features["daily_songs_30d"]
+    )
+
+    # Drop intermediate columns
+    user_features = user_features.drop(columns=["daily_songs_7d", "daily_songs_30d"])
+
+    # --- Phase 3: Quality of Engagement Ratios ---
+
+    # 1. Boredom Ratio: Last session length vs Average session length
+    # Low ratio (< 1) -> Last session was shorter than usual -> Potential boredom/churn
+    user_features["boredom_ratio"] = user_features["last_session_length"] / (
+        user_features["avg_session_duration"] + 1
+    )
+
+    # 2. Exploration Ratio: Diversity in last 7 days vs last 30 days
+    # Low ratio -> Stopped discovering new music -> Stagnation
+    user_features["exploration_ratio"] = user_features["unique_artists_last_7d"] / (
+        (user_features["unique_artists_last_30d"] / 4) + 0.1
+    )
+
+    # 3. Hate Ratio (7d): Thumbs down per song in last 7 days
+    # High ratio -> Frustration
+    user_features["hate_ratio_7d"] = user_features["thumbs_down_last_7d"] / (
+        user_features["songs_last_7d"] + 1
     )
 
     # 7. Set Target (Legacy / Default Behavior)
