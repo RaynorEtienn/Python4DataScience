@@ -287,6 +287,42 @@ def aggregate_user_features(df, snapshot_df=None):
         user_features["account_lifetime"] / user_features["total_sessions"]
     )
 
+    # --- NORMALIZATION FIX (Time-Invariant Features) ---
+    # Convert Total Counts to Rates per Day to handle observation window differences
+    # (Train Snapshots vs Test Full History)
+    # AND Apply Log-Transformation to handle extreme outliers in Test Set (e.g. Rate=50 vs Rate=0.1)
+
+    # 1. Create Rate Features (Log-Transformed)
+    user_features["sessions_per_day"] = np.log1p(
+        user_features["total_sessions"] / (user_features["account_lifetime"] + 1)
+    )
+    user_features["thumbs_up_per_day"] = np.log1p(
+        user_features["is_thumbs_up"] / (user_features["account_lifetime"] + 1)
+    )
+    user_features["thumbs_down_per_day"] = np.log1p(
+        user_features["is_thumbs_down"] / (user_features["account_lifetime"] + 1)
+    )
+    user_features["ads_per_day"] = np.log1p(
+        user_features["is_ad"] / (user_features["account_lifetime"] + 1)
+    )
+    user_features["errors_per_day"] = np.log1p(
+        user_features["is_error"] / (user_features["account_lifetime"] + 1)
+    )
+    user_features["listen_time_per_day"] = np.log1p(
+        user_features["length"] / (user_features["account_lifetime"] + 1)
+    )
+
+    # Overwrite avg_songs_per_day with log version
+    user_features["avg_songs_per_day"] = np.log1p(
+        user_features["is_song"] / (user_features["account_lifetime"] + 1)
+    )
+
+    # 2. Drop Raw Count Columns (Prevent Bias/Leakage)
+    # We keep 'is_song' only if it's used for other ratios, but generally we should drop it.
+    # However, 'is_song' is used in 'errors_per_song' (line 273) and 'songs_per_minute' (line 328).
+    # We must ensure we don't break those calculations.
+    # Strategy: Keep them for calculation, drop them at the very end (Step 9).
+
     # Recency: Days since last session (relative to cutoff)
     # Since we filtered df to <= cutoff, the max(ts) IS the last session time.
     # And last_active IS the cutoff.
@@ -430,7 +466,19 @@ def aggregate_user_features(df, snapshot_df=None):
 
     # 9. Cleanup for Modeling
     # Drop raw timestamps and high-cardinality categoricals (original state)
-    cols_to_drop = ["registration", "last_active", "state"]
+    # Also drop Raw Count Columns that are biased by observation window length
+    cols_to_drop = [
+        "registration",
+        "last_active",
+        "state",
+        "is_thumbs_up",
+        "is_thumbs_down",
+        "is_ad",
+        "is_error",
+        "is_song",
+        "length",
+        "total_sessions",
+    ]
     user_features = user_features.drop(
         columns=[c for c in cols_to_drop if c in user_features.columns]
     )
