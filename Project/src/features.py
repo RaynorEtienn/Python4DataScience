@@ -194,10 +194,8 @@ def aggregate_user_features(df, snapshot_df=None):
     g = df.groupby(group_keys)
     user_features = g.agg(
         {
-            "gender": "first",
             "level": "last",  # Current level
             "registration": "first",
-            "platform": "first",
             "state": "first",  # Kept for Frequency Encoding
             "last_active": "max",  # This will be the cutoff_ts if provided
             "is_thumbs_up": "sum",
@@ -211,7 +209,8 @@ def aggregate_user_features(df, snapshot_df=None):
     )
 
     # 5. Rolling Window Aggregations
-    for days in [1, 3, 7, 14, 30]:
+    # PRUNING: Dropped 1d and 3d windows to reduce noise
+    for days in [7, 14, 30]:
         # Filter events within the window
         window_mask = df["days_from_end"] <= days
         window_df = df[window_mask]
@@ -255,9 +254,10 @@ def aggregate_user_features(df, snapshot_df=None):
         user_features["is_thumbs_up"] + user_features["is_thumbs_down"] + 1
     )
     # Clip errors_per_song to handle extreme outliers (e.g. users with 0 songs and many errors)
-    user_features["errors_per_song"] = (
-        user_features["is_error"] / (user_features["is_song"] + 1)
-    ).clip(upper=5.0)
+    # REMOVED IN EXP 17: High divergence (-131%)
+    # user_features["errors_per_song"] = (
+    #     user_features["is_error"] / (user_features["is_song"] + 1)
+    # ).clip(upper=5.0)
 
     # --- Advanced Features (Trends, Gaps, Session Quality) ---
 
@@ -286,6 +286,11 @@ def aggregate_user_features(df, snapshot_df=None):
     user_features["avg_days_between_sessions"] = (
         user_features["account_lifetime"] / user_features["total_sessions"]
     )
+
+    # NEW: Detailed Gap Analysis (Std and Max Gap)
+    # REMOVED IN EXP 17: Caused Covariate Shift (Test set has larger gaps than Train)
+    # We revert to simple avg_days_between_sessions
+    # (Code removed to prevent UnboundLocalError)
 
     # --- NORMALIZATION FIX (Time-Invariant Features) ---
     # Convert Total Counts to Rates per Day to handle observation window differences
@@ -385,16 +390,9 @@ def aggregate_user_features(df, snapshot_df=None):
     user_features = user_features.join(last_session_agg).fillna(0)
 
     # E. Activity Slope (Trend)
-    # Simple linear approximation: (Avg Daily Songs Last 7d) - (Avg Daily Songs Last 30d)
-    # If positive, activity is increasing. If negative, fading out.
-    user_features["daily_songs_7d"] = user_features["songs_last_7d"] / 7.0
-    user_features["daily_songs_30d"] = user_features["songs_last_30d"] / 30.0
-    user_features["activity_trend"] = (
-        user_features["daily_songs_7d"] - user_features["daily_songs_30d"]
-    )
-
-    # Drop intermediate columns
-    user_features = user_features.drop(columns=["daily_songs_7d", "daily_songs_30d"])
+    # REMOVED IN EXP 17: Caused Covariate Shift (Flipped sign between Train/Test)
+    # user_features["daily_songs_7d"] = user_features["songs_last_7d"] / 7.0
+    # ... (Trend calculation removed) ...
 
     # --- Phase 3: Quality of Engagement Ratios ---
 
@@ -410,16 +408,23 @@ def aggregate_user_features(df, snapshot_df=None):
         user_features["songs_last_30d"] + 1
     )
 
-    # 2. Exploration Ratio: Diversity in last 7 days vs last 30 days
-    # Low ratio -> Stopped discovering new music -> Stagnation
-    user_features["exploration_ratio"] = user_features["unique_artists_last_7d"] / (
-        (user_features["unique_artists_last_30d"] / 4) + 0.1
+    # NEW: Exploration Rate (Discovery)
+    # Unique songs vs Total songs in last 30 days
+    # High rate = Discovery. Low rate = Repetition.
+    user_features["exploration_rate"] = user_features["unique_songs_last_30d"] / (
+        user_features["songs_last_30d"] + 1
     )
 
     # 3. Hate Ratio (7d): Thumbs down per song in last 7 days
     # High ratio -> Frustration
     user_features["hate_ratio_7d"] = user_features["thumbs_down_last_7d"] / (
         user_features["songs_last_7d"] + 1
+    )
+
+    # NEW: Frustration Score (Interaction)
+    # Interaction between Errors and Thumbs Down (both are log-rates)
+    user_features["frustration_score"] = (
+        user_features["errors_per_day"] * user_features["thumbs_down_per_day"]
     )
 
     # --- FEATURE ENGINEERING BOOST (Moved from Notebook) ---
