@@ -270,6 +270,11 @@ def aggregate_user_features(df, snapshot_df=None):
         "listen_time_last_7d"
     ] / ((user_features["listen_time_last_30d"] / 4) + 0.1)
 
+    # NEW: Error Trend (Are errors increasing recently?)
+    user_features["trend_errors_7d_vs_30d"] = user_features["errors_last_7d"] / (
+        (user_features["errors_last_30d"] / 4) + 0.01
+    )
+
     # B. Gap Analysis (Recency & Regularity)
     # Calculate average gap between sessions (approximate by days with activity)
     # We need to go back to event level for this, or approximate.
@@ -304,6 +309,12 @@ def aggregate_user_features(df, snapshot_df=None):
     )
     user_features["avg_session_duration"] = (
         user_features["length"] / user_features["total_sessions"]
+    )
+
+    # NEW: Session Density (Songs per minute of listening time)
+    # High density = intense listening. Low density = lots of pauses or long songs.
+    user_features["songs_per_minute"] = user_features["is_song"] / (
+        (user_features["length"] / 60) + 1
     )
 
     # --- Phase 1: Advanced Features (Last Session & Trends) ---
@@ -351,10 +362,16 @@ def aggregate_user_features(df, snapshot_df=None):
 
     # --- Phase 3: Quality of Engagement Ratios ---
 
-    # 1. Boredom Ratio: Last session length vs Average session length
-    # Low ratio (< 1) -> Last session was shorter than usual -> Potential boredom/churn
-    user_features["boredom_ratio"] = user_features["last_session_length"] / (
-        user_features["avg_session_duration"] + 1
+    # 2. Exploration Ratio: Diversity in last 7 days vs last 30 days
+    # Low ratio -> Stopped discovering new music -> Stagnation
+    user_features["exploration_ratio"] = user_features["unique_artists_last_7d"] / (
+        (user_features["unique_artists_last_30d"] / 4) + 0.1
+    )
+
+    # NEW: Diversity Ratio (30d) - Unique songs vs Total songs
+    # Low ratio = Repetitive listening. High ratio = Exploration.
+    user_features["diversity_ratio_30d"] = user_features["unique_songs_last_30d"] / (
+        user_features["songs_last_30d"] + 1
     )
 
     # 2. Exploration Ratio: Diversity in last 7 days vs last 30 days
