@@ -322,6 +322,20 @@ def aggregate_user_features(df, snapshot_df=None):
         user_features["is_song"] / (user_features["account_lifetime"] + 1)
     )
 
+    # EXP 21: Log-Transformed Volume Features
+    # We bring back volume features but apply log1p to reduce the impact of outliers
+    # and the scale difference between Train (Snapshots) and Test (Full History).
+    for days in [7, 14, 30]:
+        user_features[f"log_songs_last_{days}d"] = np.log1p(
+            user_features[f"songs_last_{days}d"]
+        )
+        user_features[f"log_errors_last_{days}d"] = np.log1p(
+            user_features[f"errors_last_{days}d"]
+        )
+        user_features[f"log_listen_time_last_{days}d"] = np.log1p(
+            user_features[f"listen_time_last_{days}d"]
+        )
+
     # 2. Drop Raw Count Columns (Prevent Bias/Leakage)
     # We keep 'is_song' only if it's used for other ratios, but generally we should drop it.
     # However, 'is_song' is used in 'errors_per_song' (line 273) and 'songs_per_minute' (line 328).
@@ -472,6 +486,21 @@ def aggregate_user_features(df, snapshot_df=None):
     # 9. Cleanup for Modeling
     # Drop raw timestamps and high-cardinality categoricals (original state)
     # Also drop Raw Count Columns that are biased by observation window length
+
+    # Define raw count columns to drop (generated in Step 5)
+    raw_count_cols = []
+    for days in [7, 14, 30]:
+        raw_count_cols.extend(
+            [
+                f"songs_last_{days}d",
+                f"errors_last_{days}d",
+                f"thumbs_down_last_{days}d",
+                f"listen_time_last_{days}d",
+                f"unique_artists_last_{days}d",
+                f"unique_songs_last_{days}d",
+            ]
+        )
+
     cols_to_drop = [
         "registration",
         "last_active",
@@ -483,7 +512,8 @@ def aggregate_user_features(df, snapshot_df=None):
         "is_song",
         "length",
         "total_sessions",
-    ]
+    ] + raw_count_cols
+
     user_features = user_features.drop(
         columns=[c for c in cols_to_drop if c in user_features.columns]
     )

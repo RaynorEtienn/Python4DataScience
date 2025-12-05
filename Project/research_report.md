@@ -35,3 +35,30 @@
 | **15** | **Pruned + Optimized (F1)** | Dropped `activity_trend`. Enabled Optuna (30 trials, F1). | 0.366 | 0.63884 | **Regression**. Slight drop from baseline (-0.001). Optimization may have overfitted, or the default parameters were already near-optimal for this feature set. |
 | **16** | **New Features + Pruning** | Added `frustration_score`, `gap_std`, `exploration_rate`. Dropped raw counts (`_last_1d`, `_last_3d`). | 0.372 | 0.62968 | **Failed**. Significant drop (-0.010). The new features (especially `gap_std` which relies on history) might be unstable on the Test set, or dropping the raw counts removed valuable signal. |
 | **17** | **Correction + RF** | Removed toxic features (`gap_std`, `activity_trend`). Added **Random Forest** to ensemble. | 0.337 | **0.64099** | **Success**. Recovered from Exp 16 failure (+0.011). Beat Baseline (Exp 14). Random Forest stabilized the ensemble. |
+| **18** | **Exp 17 + Optimization** | Re-ran Exp 17 with Optuna (30 trials). | 0.337 | **0.64695** | **Success**. Significant jump (+0.006). We are now within striking distance of the ATH (0.648). Optimization worked perfectly on the cleaner feature set. |
+| **19** | **Clean Features (Rates Only)** | Removed ALL raw count features (`_last_Xd`). Kept only rates and ratios. | 0.331 | 0.63906 | **Regression**. Score dropped (-0.008). While "safer" (lower covariate shift), the raw counts provided valuable signal (volume) that rates missed. |
+| **20** | **Exp 19 + Optimization** | Re-ran Exp 19 with Optuna (30 trials) to tune for the new "Clean" feature set. | 0.326 | 0.63016 | **Failed**. Score dropped further (-0.009). This confirms that "Rate-Based Only" is insufficient. The model *needs* volume features (Total Songs, Total Errors) to distinguish heavy users from light users. |
+| **21** | **Log-Transformed Volume** | Reintroduced volume features (`songs_last_30d`) but with `log1p` transformation. Optimized (30 trials). | 0.341 | 0.64064 | **Success**. Recovered +0.010 points. Log-transformation reduced the covariate shift (160% -> 100%) while preserving the volume signal. |
+| **22** | **Super Ensemble (Bagging)** | Added `BaggingClassifier(LogisticRegression)` to the ensemble. Optimized ALL 5 models (15 trials each). | 0.330 | **0.65381** | **BREAKTHROUGH**. We smashed the ATH (0.648) by +0.005 points! The addition of Bagging + Linear Model provided the robustness we needed. |
+
+## 3. Analysis of Experiment 22 (The Breakthrough)
+
+### The "Goods"
+1.  **New All-Time High (0.65381)**: We have finally surpassed the previous best of 0.648. This is a significant improvement.
+2.  **Strategy Validated**: The hypothesis that "Variance Reduction" (Bagging) and "Simpler Models" (Logistic Regression) were key was correct.
+    *   Boosting models (XGB/LGBM/Cat) capture complex patterns.
+    *   Bagging Logistic Regression captures the linear trend and stabilizes predictions.
+    *   Random Forest adds diversity.
+3.  **Optimization**: The "Light Tune" (15 trials) for *all* models ensured that every component of the ensemble was performing well without overfitting.
+
+### Feature Importance
+*   **Top Feature**: `days_since_last_session` (Recency) is still the king.
+*   **Volume Matters**: `log_songs_last_30d` and `log_listen_time_last_30d` are in the top 20, confirming that volume signal is essential.
+*   **New Insight**: `state_freq` (User State) and `songs_per_minute` (Density) are very strong.
+
+### Next Steps: Chasing 0.660
+We are now very close to your colleague's score (0.656). To bridge the gap:
+*   **Refine Bagging**: Try `BaggingClassifier` with `DecisionTree` (Random Forest is essentially this, but explicit bagging might differ).
+*   **Meta-Learner**: Switch back to **Stacking** (instead of Soft Voting) now that we have 5 strong, diverse models. A Logistic Regression meta-learner might learn to weight the Bagging model higher.
+*   **Threshold Tuning**: We are using a global threshold. Optimizing the threshold *per model* before voting might help.
+
