@@ -1,0 +1,123 @@
+{
+    "timestamp": "2025-12-06 03:26:43",
+    "kaggle_results": 0.64990,
+    "optimization_enabled": true,
+    "data_shape": [
+        68601,
+        39
+    ],
+    "features": [
+        "level",
+        "downgrade",
+        "account_lifetime",
+        "avg_songs_per_day",
+        "thumbs_ratio",
+        "trend_songs_7d_vs_30d",
+        "trend_listen_time_7d_vs_30d",
+        "trend_errors_7d_vs_30d",
+        "avg_days_between_sessions",
+        "sessions_per_day",
+        "thumbs_up_per_day",
+        "thumbs_down_per_day",
+        "ads_per_day",
+        "errors_per_day",
+        "listen_time_per_day",
+        "log_songs_last_7d",
+        "log_errors_last_7d",
+        "log_listen_time_last_7d",
+        "log_songs_last_14d",
+        "log_errors_last_14d",
+        "log_listen_time_last_14d",
+        "log_songs_last_30d",
+        "log_errors_last_30d",
+        "log_listen_time_last_30d",
+        "days_since_last_session",
+        "avg_songs_per_session",
+        "avg_session_duration",
+        "songs_per_minute",
+        "last_session_errors",
+        "last_session_songs",
+        "last_session_length",
+        "last_session_downgrade",
+        "exploration_ratio",
+        "diversity_ratio_30d",
+        "hate_ratio_7d",
+        "frustration_score",
+        "recency_frequency_ratio",
+        "session_velocity",
+        "state_freq"
+    ],
+    "model_performance_cv": {
+        "f1_mean": 0.33003828693868964,
+        "f1_std": 0.014228524991827016,
+        "roc_auc_mean": 0.8772649719867365,
+        "accuracy_mean": 0.8865614156164614
+    },
+    "optimization": {
+        "optimal_threshold": 0.23,
+        "max_f1_at_threshold": 0.5142475299508377
+    },
+    "best_params": {
+        "trials": 30,
+        "xgb": {
+            "n_estimators": 742,
+            "learning_rate": 0.2731145742729428,
+            "max_depth": 3,
+            "subsample": 0.683732608515525,
+            "colsample_bytree": 0.9214054620174381,
+            "gamma": 1.6519238088195882,
+            "min_child_weight": 3,
+            "eval_metric": "logloss",
+            "random_state": 42,
+            "n_jobs": -1
+        },
+        "f1_xgb_best_perf": 0.36658151247733484,
+        "lgbm": {
+            "n_estimators": 930,
+            "learning_rate": 0.21682039031618608,
+            "num_leaves": 61,
+            "max_depth": 3,
+            "subsample": 0.5621917341809785,
+            "colsample_bytree": 0.7805661933448507,
+            "min_child_samples": 92,
+            "random_state": 42,
+            "n_jobs": -1,
+            "verbose": -1
+        },
+        "f1_lgbm_best_perf": 0.3746283181485251,
+        "cat": {
+            "iterations": 609,
+            "learning_rate": 0.2993066635063247,
+            "depth": 5,
+            "l2_leaf_reg": 3.159604785022299,
+            "random_strength": 7.403285840935151,
+            "bagging_temperature": 0.6091484959274722,
+            "verbose": 0,
+            "random_state": 42,
+            "thread_count": -1
+        },
+        "f1_cat_best_perf": 0.3644714683464266,
+        "rf": {
+            "n_estimators": 101,
+            "max_depth": 16,
+            "min_samples_split": 12,
+            "min_samples_leaf": 5,
+            "max_features": "sqrt",
+            "random_state": 42,
+            "n_jobs": -1
+        },
+        "f1_rf_best_perf": 0.2687238561791496,
+        "bagging": {
+            "n_estimators": 77,
+            "max_samples": 0.8581680138000557,
+            "max_features": 0.9957530155858338,
+            "estimator": "LogisticRegression(C=2.555983043046253, max_iter=1000, random_state=42,\n                   solver='liblinear')",
+            "random_state": 42,
+            "n_jobs": -1,
+            "bootstrap": true,
+            "bootstrap_features": false
+        },
+        "f1_bagging_best_perf": 0.271579180938399
+    },
+    "experience_number": 24
+}

@@ -2,6 +2,8 @@ import matplotlib.pyplot as plt
 import seaborn as sb
 import matplotlib.dates as mdates
 import pandas as pd
+import numpy as np
+from sklearn.pipeline import Pipeline
 
 
 def plot_churn_distribution(df):
@@ -247,3 +249,80 @@ def analyze_page_distribution(df, ignore_pages=[]):
     plt.xticks(rotation=90)
     plt.tight_layout()
     plt.show()
+
+
+def get_true_names_and_importance(estimator, backup_names):
+    """
+    1. Unwraps Pipelines.
+    2. Handles BaggingClassifiers (averages internal estimators).
+    3. Handles standard Coef/Importance.
+    4. Patches missing feature names if needed.
+    """
+    # 1. Unwrap Pipeline (Standard case)
+    if isinstance(estimator, Pipeline):
+        estimator = estimator.steps[-1][1]
+
+    importances = None
+
+    # --- NEW: HANDLE BAGGING CLASSIFIERS ---
+    # Bagging doesn't have coef_, but it has a list of 'estimators_'
+    if hasattr(estimator, "estimators_") and hasattr(estimator, "estimators_samples_"):
+        # print("   -> Detected Bagging Ensemble. Averaging internal coefficients...")
+        bagged_coefs = []
+
+        for sub_est in estimator.estimators_:
+            # Unwrap sub-pipeline if the bagging wraps pipelines
+            if isinstance(sub_est, Pipeline):
+                sub_est = sub_est.steps[-1][1]
+
+            # Extract Coefs (Linear) or Importance (Tree)
+            if hasattr(sub_est, "coef_"):
+                c = sub_est.coef_
+                # Handle binary vs multiclass shape
+                val = np.mean(np.abs(c), axis=0) if c.ndim > 1 else np.abs(c.ravel())
+                bagged_coefs.append(val)
+            elif hasattr(sub_est, "feature_importances_"):
+                bagged_coefs.append(sub_est.feature_importances_)
+
+        if bagged_coefs:
+            # Average across all bagged models
+            importances = np.mean(np.array(bagged_coefs), axis=0)
+
+    # --- STANDARD MODELS (RF, CatBoost, Single LogReg) ---
+    elif hasattr(estimator, "feature_importances_"):
+        importances = estimator.feature_importances_
+    elif hasattr(estimator, "coef_"):
+        coefs = estimator.coef_
+        if coefs.ndim > 1:
+            importances = np.mean(np.abs(coefs), axis=0)
+        else:
+            importances = np.abs(coefs.ravel())
+
+    if importances is None:
+        return None
+
+    # 3. GET NAMES (The Patch Logic)
+    final_names = None
+
+    # STRATEGY A: Trust the model (Most robust)
+    if hasattr(estimator, "feature_names_in_"):
+        final_names = estimator.feature_names_in_
+
+    # STRATEGY B: Trust the backup file (only if lengths match)
+    elif len(importances) == len(backup_names):
+        final_names = backup_names
+
+    # STRATEGY C: Desperation (Length Mismatch)
+    else:
+        diff = len(importances) - len(backup_names)
+        if diff == 1:
+            print("   ⚠️  Patching missing feature name (likely 'exploration_rate').")
+            final_names = list(backup_names) + ["(Dropped_Feature)"]
+        else:
+            final_names = [f"Feat_{i}" for i in range(len(importances))]
+
+    # 4. Return Series
+    if hasattr(final_names, "__len__") and len(importances) == len(final_names):
+        return pd.Series(importances, index=final_names)
+
+    return None

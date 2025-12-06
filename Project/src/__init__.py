@@ -1,4 +1,10 @@
-from .utils import load_data, downsample_data
+from .utils import (
+    load_data,
+    downsample_data,
+    load_variables,
+    save_variables,
+    update_variable,
+)
 from .cleaning import cast_types, check_ts_vs_time, clean_data
 from .features import (
     label_churn,
@@ -18,4 +24,5 @@ from .visualization import (
     analyze_location,
     analyze_user_agent,
     analyze_page_distribution,
+    get_true_names_and_importance,
 )
